@@ -1,6 +1,15 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      args:
+        WHISPER_MODEL: ${WHISPER_MODEL:-small}
     restart: unless-stopped
     env_file:
       - .env
+    # Optional: mount a volume so the model isn't re-downloaded on rebuild
+    volumes:
+      - whisper_cache:/root/.cache/huggingface
+
+volumes:
+  whisper_cache:

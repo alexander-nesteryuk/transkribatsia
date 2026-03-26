@@ -1,2 +1,2 @@
 python-telegram-bot==20.8
-openai==1.14.0
+faster-whisper==1.0.3

@@ -1,11 +1,13 @@
+import asyncio
 import logging
 import os
 import tempfile
+from functools import partial
 from pathlib import Path
 
+from faster_whisper import WhisperModel
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from openai import OpenAI
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -14,9 +16,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+logger.info("Loading Whisper model '%s'...", WHISPER_MODEL)
+model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
+logger.info("Model loaded.")
+
+
+def transcribe_file(path: str) -> str:
+    segments, _ = model.transcribe(path, beam_size=5)
+    return " ".join(segment.text.strip() for segment in segments).strip()
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -56,13 +65,9 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         await tg_file.download_to_drive(tmp_path)
 
-        with open(tmp_path, "rb") as audio_file:
-            transcript = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-            )
+        loop = asyncio.get_event_loop()
+        text = await loop.run_in_executor(None, partial(transcribe_file, tmp_path))
 
-        text = transcript.text.strip()
         if not text:
             await status.edit_text("Не удалось распознать речь. Попробуйте другой файл.")
             return
