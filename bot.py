@@ -17,10 +17,14 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
+MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT", "4"))
 
 logger.info("Loading Whisper model '%s'...", WHISPER_MODEL)
 model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
 logger.info("Model loaded.")
+
+# Limits simultaneous transcriptions to protect the model and CPU
+semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
 
 def transcribe_file(path: str) -> str:
@@ -65,8 +69,9 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         await tg_file.download_to_drive(tmp_path)
 
-        loop = asyncio.get_event_loop()
-        text = await loop.run_in_executor(None, partial(transcribe_file, tmp_path))
+        async with semaphore:
+            loop = asyncio.get_event_loop()
+            text = await loop.run_in_executor(None, partial(transcribe_file, tmp_path))
 
         if not text:
             await status.edit_text("Не удалось распознать речь. Попробуйте другой файл.")
