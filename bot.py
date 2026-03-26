@@ -19,6 +19,8 @@ TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT", "4"))
 LOCAL_API_URL = os.environ.get("TELEGRAM_LOCAL_API_URL", "")
+# Pause between segments (seconds) that triggers a new paragraph
+PARAGRAPH_PAUSE_SEC = float(os.environ.get("PARAGRAPH_PAUSE_SEC", "2.0"))
 
 logger.info("Loading Whisper model '%s'...", WHISPER_MODEL)
 model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
@@ -28,8 +30,28 @@ semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
 
 def transcribe_file(path: str) -> str:
-    segments, _ = model.transcribe(path, beam_size=5)
-    return " ".join(segment.text.strip() for segment in segments).strip()
+    segments, _ = model.transcribe(
+        path,
+        beam_size=5,
+        vad_filter=True,          # strips silence, improves segmentation
+        vad_parameters={"min_silence_duration_ms": 500},
+    )
+
+    paragraphs: list[list[str]] = [[]]
+    last_end = 0.0
+
+    for segment in segments:
+        # Long pause between segments → start a new paragraph
+        if paragraphs[-1] and (segment.start - last_end) >= PARAGRAPH_PAUSE_SEC:
+            paragraphs.append([])
+        paragraphs[-1].append(segment.text.strip())
+        last_end = segment.end
+
+    return "\n\n".join(
+        " ".join(sentences)
+        for sentences in paragraphs
+        if sentences
+    )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
