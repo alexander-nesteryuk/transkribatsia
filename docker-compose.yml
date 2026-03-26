@@ -1,4 +1,15 @@
 services:
+
+  # Local Bot API Server — removes the 20 MB file size limit (allows up to 2 GB)
+  telegram-bot-api:
+    image: aiogram/telegram-bot-api:latest
+    restart: unless-stopped
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+    volumes:
+      - bot_api_data:/var/lib/telegram-bot-api
+
   bot:
     build:
       context: .
@@ -7,9 +18,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    # Optional: mount a volume so the model isn't re-downloaded on rebuild
+    environment:
+      TELEGRAM_LOCAL_API_URL: "http://telegram-bot-api:8081/bot"
     volumes:
       - whisper_cache:/root/.cache/huggingface
+    depends_on:
+      - telegram-bot-api
 
 volumes:
   whisper_cache:
+  bot_api_data:

@@ -18,12 +18,12 @@ logger = logging.getLogger(__name__)
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT", "4"))
+LOCAL_API_URL = os.environ.get("TELEGRAM_LOCAL_API_URL", "")
 
 logger.info("Loading Whisper model '%s'...", WHISPER_MODEL)
 model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
 logger.info("Model loaded.")
 
-# Limits simultaneous transcriptions to protect the model and CPU
 semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
 
@@ -57,7 +57,7 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         tg_file = await message.video.get_file()
         suffix = ".mp4"
     else:
-        await message.reply_text("Пожалуйста, отправьте аудио или голосовое сообщение.")
+        await message.reply_text("Пожалуйста, отправьте аудио или голосое сообщение.")
         return
 
     status = await message.reply_text("⏳ Обрабатываю...")
@@ -88,7 +88,13 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 def main() -> None:
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    builder = Application.builder().token(TELEGRAM_TOKEN)
+
+    if LOCAL_API_URL:
+        logger.info("Using local Bot API: %s", LOCAL_API_URL)
+        builder = builder.base_url(LOCAL_API_URL).local_mode(True)
+
+    app = builder.build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(
